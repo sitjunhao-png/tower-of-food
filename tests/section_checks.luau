@@ -31,7 +31,7 @@ local K = {
 	JUMP_HEIGHT = 7.2,
 	MAX_PARTS = 120,
 	MIN_PARTS = 15,
-	SPIN_SAMPLES = 120, -- poses per spin turn for bounds / keep-out
+	SPIN_SAMPLES = 72, -- poses per spin turn for bounds / keep-out (5 degree steps)
 	REACH_SPIN = 24, -- poses per spin turn for reachability
 }
 K.V0 = sqrt(2 * K.GRAVITY * K.JUMP_HEIGHT)
@@ -186,49 +186,77 @@ function G2.pointPoly(poly, x, z)
 	return best, bx, bz
 end
 
-local function orient(ax, az, bx, bz, cx, cz)
-	return (bx - ax) * (cz - az) - (bz - az) * (cx - ax)
+-- squared distance from point p to segment a-b (hot path: kept small and inline)
+local function psd2(px, pz, ax, az, bx, bz): number
+	local dx, dz = bx - ax, bz - az
+	local len2 = dx * dx + dz * dz
+	local t = 0
+	if len2 > 1e-18 then
+		t = ((px - ax) * dx + (pz - az) * dz) / len2
+		if t < 0 then
+			t = 0
+		elseif t > 1 then
+			t = 1
+		end
+	end
+	local ex, ez = ax + dx * t - px, az + dz * t - pz
+	return ex * ex + ez * ez
 end
-function G2.segSeg(ax, az, bx, bz, cx, cz, dx, dz): number
-	local o1, o2 = orient(ax, az, bx, bz, cx, cz), orient(ax, az, bx, bz, dx, dz)
-	local o3, o4 = orient(cx, cz, dx, dz, ax, az), orient(cx, cz, dx, dz, bx, bz)
+
+-- squared distance between segments a-b and c-d (0 if they cross)
+function G2.segSeg2(ax, az, bx, bz, cx, cz, dx, dz): number
+	local abx, abz, cdx, cdz = bx - ax, bz - az, dx - cx, dz - cz
+	local o1 = abx * (cz - az) - abz * (cx - ax)
+	local o2 = abx * (dz - az) - abz * (dx - ax)
+	local o3 = cdx * (az - cz) - cdz * (ax - cx)
+	local o4 = cdx * (bz - cz) - cdz * (bx - cx)
 	if ((o1 > 0 and o2 < 0) or (o1 < 0 and o2 > 0)) and ((o3 > 0 and o4 < 0) or (o3 < 0 and o4 > 0)) then
 		return 0
 	end
-	return math.min(
-		(G2.pointSeg(ax, az, cx, cz, dx, dz)),
-		(G2.pointSeg(bx, bz, cx, cz, dx, dz)),
-		(G2.pointSeg(cx, cz, ax, az, bx, bz)),
-		(G2.pointSeg(dx, dz, ax, az, bx, bz))
-	)
+	local m = psd2(ax, az, cx, cz, dx, dz)
+	local v = psd2(bx, bz, cx, cz, dx, dz)
+	if v < m then
+		m = v
+	end
+	v = psd2(cx, cz, ax, az, bx, bz)
+	if v < m then
+		m = v
+	end
+	v = psd2(dx, dz, ax, az, bx, bz)
+	if v < m then
+		m = v
+	end
+	return m
 end
 
--- distance between two convex polygons (0 if they overlap)
-function G2.polyPoly(P, Q): number
+-- distance between two convex polygons (0 if they overlap). Stops early once it is <= stopAt.
+function G2.polyPoly(P, Q, stopAt: number?): number
 	if #P >= 3 and G2.inside(P, Q[1][1], Q[1][2]) then
 		return 0
 	end
 	if #Q >= 3 and G2.inside(Q, P[1][1], P[1][2]) then
 		return 0
 	end
+	local stop2 = stopAt and stopAt * stopAt or -1
 	local best = huge
 	local np, nq = #P, #Q
 	local lp = (np <= 2) and 1 or np
 	local lq = (nq <= 2) and 1 or nq
 	for i = 1, lp do
 		local a, b = P[i], P[i % np + 1]
+		local ax, az, bx, bz = a[1], a[2], b[1], b[2]
 		for j = 1, lq do
 			local c, d = Q[j], Q[j % nq + 1]
-			local dd = G2.segSeg(a[1], a[2], b[1], b[2], c[1], c[2], d[1], d[2])
+			local dd = G2.segSeg2(ax, az, bx, bz, c[1], c[2], d[1], d[2])
 			if dd < best then
 				best = dd
-				if best == 0 then
-					return 0
+				if best <= stop2 or best == 0 then
+					return sqrt(best)
 				end
 			end
 		end
 	end
-	return best
+	return sqrt(best)
 end
 
 function G2.circle(r: number, n: number)
@@ -740,7 +768,7 @@ function Reach.dist(A, B, limit: number): number
 			local dz = math.max(0, fb.z0 - fa.z1, fa.z0 - fb.z1)
 			local boxD = sqrt(dx * dx + dz * dz)
 			if boxD < best and (boxD <= limit or limit == huge) then
-				local d = G2.polyPoly(fa.poly, fb.poly)
+				local d = G2.polyPoly(fa.poly, fb.poly, limit)
 				if d < best then
 					best = d
 					if best <= limit then
@@ -1775,6 +1803,17 @@ local function selfTest(): number
 	ok("zoneHit swept move", G3.zoneHit(passing, passed, 0.05, 6, 7.5) ~= nil)
 	local bigFloor = G3.solid("box", CFrame.new(0, 3, 0), V(40, 1, 40), 8, 1)
 	ok("zoneHit huge slab covering the zone", G3.zoneHit(bigFloor, bigFloor, 0.05, 6, 7.5) ~= nil)
+	-- polygon distances
+	local sq1 = G2.hull({ { 0, 0 }, { 2, 0 }, { 2, 2 }, { 0, 2 } })
+	local sq2 = G2.hull({ { 5, 0 }, { 7, 0 }, { 7, 2 }, { 5, 2 } })
+	local thinA = G2.hull({ { -5, -0.1 }, { 5, -0.1 }, { 5, 0.1 }, { -5, 0.1 } })
+	local thinB = G2.hull({ { -0.1, -5 }, { 0.1, -5 }, { 0.1, 5 }, { -0.1, 5 } })
+	local inner = G2.hull({ { 0.5, 0.5 }, { 1, 0.5 }, { 1, 1 } })
+	ok("polyPoly apart", near(G2.polyPoly(sq1, sq2), 3))
+	ok("polyPoly crossing (no corner inside)", G2.polyPoly(thinA, thinB) == 0)
+	ok("polyPoly contained", G2.polyPoly(sq1, inner) == 0 and G2.polyPoly(inner, sq1) == 0)
+	ok("polyPoly diagonal", near(G2.polyPoly(sq1, G2.hull({ { 5, 6 }, { 6, 6 }, { 6, 7 } })), 5))
+	ok("pointPoly", near((G2.pointPoly(sq2, 0, 1)), 5) and G2.pointPoly(sq1, 1, 1) == 0)
 	-- jump physics
 	ok("jump v0", near(K.V0, 53.15, 0.01) and near(Reach.maxRise(K.V0), 6.5, 1e-6))
 	ok("flat jump gap", near(Reach.maxGap(K.V0, 0, 0.8) :: number, 16 * (2 * K.V0 / K.GRAVITY) * 0.8 + 1.5, 1e-9))
