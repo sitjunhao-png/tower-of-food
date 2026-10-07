@@ -97,7 +97,14 @@ end
 local G2 = {}
 
 -- convex hull (Andrew's monotone chain), points are { x, z }; returns CCW list
-function G2.hull(pts)
+function G2.hull(input)
+	-- drop NaN/inf points (they would break sorting)
+	local pts = {}
+	for _, p in ipairs(input) do
+		if U.finite(p[1]) and U.finite(p[2]) then
+			table.insert(pts, p)
+		end
+	end
 	local n = #pts
 	if n <= 1 then
 		return pts
@@ -649,10 +656,10 @@ end
 
 local function vecAttr(inst, name)
 	local v = U.attr(inst, name)
-	if typeof(v) == "Vector3" then
+	if typeof(v) == "Vector3" and U.finite(v.X) and U.finite(v.Y) and U.finite(v.Z) then
 		return v
 	end
-	return Vector3.zero
+	return Vector3.zero -- missing or NaN (reported as a FAIL by Check.model)
 end
 local function numAttr(inst, name)
 	local v = U.attr(inst, name)
@@ -1128,8 +1135,25 @@ function Check.build(def, combo, report)
 		root:Destroy()
 		return nil
 	end
-	local stats = Check.model(def, combo, model, created, report)
+	local stats
+	local checkedOk = xpcall(function()
+		stats = Check.model(def, combo, model, created, report)
+	end, function(e)
+		-- a bug in the harness itself: report it instead of stopping every other section
+		report.fail("HARNESS INTERNAL ERROR (not your fault - tell the harness owner): " .. U.mapText(e), { U.mapText(debug.traceback()) })
+		return e
+	end)
+	if not checkedOk then
+		stats = nil
+	end
 	root:Destroy()
+	-- tidy up anything the section leaked outside its model, so it can't affect other sections
+	for _, inst in ipairs(created) do
+		local d = U.data(inst)
+		if not d.destroyed and not d.isService then
+			inst:Destroy()
+		end
+	end
 	return stats
 end
 
@@ -1231,9 +1255,11 @@ function Check.model(def, combo, model, created, report)
 		if d.tags.Move then
 			local p = U.attr(inst, "MovePeriod")
 			local o = U.attr(inst, "MoveOffset")
-			if not U.finite(p) or p <= 0 then
+			if typeof(o) ~= "Vector3" or not (U.finite(o.X) and U.finite(o.Y) and U.finite(o.Z)) then
+				report.fail(fmt("%q: MoveOffset is invalid (%s)", d.props.Name, tostring(o)))
+			elseif not U.finite(p) or p <= 0 then
 				report.fail(fmt("%q: MovePeriod must be > 0 (got %s)", d.props.Name, tostring(p)))
-			elseif typeof(o) == "Vector3" and math.pi * o.Magnitude / p > 30 then
+			elseif math.pi * o.Magnitude / p > 30 then
 				report.warn(fmt("%q moves very fast (top speed %s studs/s)", d.props.Name, U.n1(math.pi * o.Magnitude / p)))
 			end
 		end
@@ -1243,8 +1269,15 @@ function Check.model(def, combo, model, created, report)
 				report.fail(fmt("%q: SwingPeriod must be > 0 (got %s)", d.props.Name, tostring(p)))
 			end
 			local a = U.attr(inst, "SwingAxis")
-			if typeof(a) ~= "Vector3" or not U.finite(a.X) then
-				report.fail(fmt("%q: SwingAxis is invalid (%s)", d.props.Name, tostring(a)))
+			if typeof(a) ~= "Vector3" or not (U.finite(a.X) and U.finite(a.Y) and U.finite(a.Z)) then
+				report.fail(fmt("%q: SwingAxis is invalid (%s) - did you pass a zero axis?", d.props.Name, tostring(a)))
+			end
+			local pv = U.attr(inst, "SwingPivot")
+			if typeof(pv) ~= "Vector3" or not (U.finite(pv.X) and U.finite(pv.Y) and U.finite(pv.Z)) then
+				report.fail(fmt("%q: SwingPivot is invalid (%s)", d.props.Name, tostring(pv)))
+			end
+			if not U.finite(U.attr(inst, "SwingAngle")) then
+				report.fail(fmt("%q: SwingAngle is invalid", d.props.Name))
 			end
 		end
 		if d.tags.Cycle then
@@ -1370,7 +1403,8 @@ function Check.model(def, combo, model, created, report)
 
 		-- keep-out zones (solid or deadly things only)
 		if collidable or isKill or isCycle then
-			local zones = { { 0.05, 6 }, { height - 7, height - 0.05 } }
+			-- open zones: a part that only touches a zone's edge (e.g. bottom exactly at y=6) is fine
+			local zones = { { 0.05 + 1e-3, 6 - 1e-3 }, { height - 7 + 1e-3, height - 0.05 - 1e-3 } }
 			local nearAxis = (bx0 < K.KEEP_R and bx1 > -K.KEEP_R and bz0 < K.KEEP_R and bz1 > -K.KEEP_R)
 			for zi, zone in ipairs(zones) do
 				if nearAxis and minY < zone[2] and maxY > zone[1] then
@@ -1720,6 +1754,115 @@ local function selfTest(): number
 	local t = Instance.new("TrussPart")
 	ok("truss default size", t.Size == V(2, 2, 2))
 
+	-- typical decoration code must be accepted (the mocks are strict, but not wrong)
+	local decorOk, decorErr = pcall(function()
+		local host = Instance.new("Part")
+		host.BrickColor = BrickColor.new("Bright red")
+		host.Material = Enum.Material.Neon
+		host.TopSurface = Enum.SurfaceType.Smooth
+		host.CustomPhysicalProperties = PhysicalProperties.new(0.7, 0, 0.5, 100, 1)
+		host.CustomPhysicalProperties = nil
+		assert(workspace.Gravity == 196.2, "workspace.Gravity")
+		host.CastShadow = false
+		host.Reflectance = 0.2
+		local gui = Instance.new("SurfaceGui")
+		gui.Face = Enum.NormalId.Front
+		gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+		gui.PixelsPerStud = 40
+		gui.LightInfluence = 0
+		gui.Parent = host
+		local label = Instance.new("TextLabel")
+		label.Size = UDim2.fromScale(1, 1)
+		label.Position = UDim2.new(0, 0, 0, 0)
+		label.BackgroundTransparency = 1
+		label.Text = "STRUCTURE"
+		label.TextScaled = true
+		label.Font = Enum.Font.GothamBlack
+		label.FontFace = Font.new("rbxasset://fonts/families/GothamSSm.json", Enum.FontWeight.Bold)
+		label.TextColor3 = Color3.new(1, 1, 1)
+		label.TextStrokeTransparency = 0.5
+		label.TextXAlignment = Enum.TextXAlignment.Center
+		label.Parent = gui
+		local corner = Instance.new("UICorner")
+		corner.CornerRadius = UDim.new(0, 12)
+		corner.Parent = label
+		local stroke = Instance.new("UIStroke")
+		stroke.Thickness = 2
+		stroke.Color = Color3.new(0, 0, 0)
+		stroke.Parent = label
+		local bb = Instance.new("BillboardGui")
+		bb.Size = UDim2.new(4, 0, 1, 0)
+		bb.StudsOffset = V(0, 3, 0)
+		bb.AlwaysOnTop = false
+		bb.Parent = host
+		local frame = Instance.new("Frame")
+		frame.BackgroundColor3 = Color3.new(1, 1, 0)
+		frame.Parent = bb
+		local att0 = Instance.new("Attachment")
+		att0.Position = V(0, 1, 0)
+		att0.Parent = host
+		local att1 = Instance.new("Attachment", host)
+		local pe = Instance.new("ParticleEmitter")
+		pe.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+		pe.Rate = 5
+		pe.Lifetime = NumberRange.new(1, 2)
+		pe.Speed = NumberRange.new(2)
+		pe.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.5), NumberSequenceKeypoint.new(1, 0) })
+		pe.Transparency = NumberSequence.new(0.2, 1)
+		pe.Color = ColorSequence.new(Color3.new(1, 0, 0), Color3.new(1, 1, 0))
+		pe.SpreadAngle = Vector2.new(30, 30)
+		pe.Acceleration = V(0, 5, 0)
+		pe.EmissionDirection = Enum.NormalId.Top
+		pe.LightEmission = 1
+		pe.Parent = att0
+		local fire = Instance.new("Fire")
+		fire.Size = 5
+		fire.Heat = 9
+		fire.Color = Color3.fromRGB(255, 120, 0)
+		fire.SecondaryColor = Color3.fromRGB(255, 220, 0)
+		fire.Parent = host
+		local smoke = Instance.new("Smoke")
+		smoke.Opacity = 0.2
+		smoke.RiseVelocity = 2
+		smoke.Parent = host
+		local sp = Instance.new("Sparkles")
+		sp.SparkleColor = Color3.new(1, 1, 1)
+		sp.Parent = host
+		local light = Instance.new("PointLight")
+		light.Brightness = 2
+		light.Range = 12
+		light.Color = Color3.new(1, 0.8, 0.5)
+		light.Shadows = false
+		light.Parent = host
+		local spot = Instance.new("SpotLight")
+		spot.Angle = 60
+		spot.Face = Enum.NormalId.Bottom
+		spot.Parent = host
+		local beam = Instance.new("Beam")
+		beam.Attachment0 = att0
+		beam.Attachment1 = att1
+		beam.Width0 = 0.5
+		beam.Color = ColorSequence.new(Color3.new(0, 1, 1))
+		beam.FaceCamera = true
+		beam.Parent = host
+		local hl = Instance.new("Highlight")
+		hl.FillColor = Color3.new(1, 0, 0)
+		hl.DepthMode = Enum.HighlightDepthMode.Occluded
+		hl.Parent = host
+		local mesh = Instance.new("SpecialMesh")
+		mesh.MeshType = Enum.MeshType.Sphere
+		mesh.Scale = V(1, 0.5, 1)
+		mesh.Parent = host
+		local truss = Instance.new("TrussPart")
+		truss.Style = Enum.Style.NoSupports
+		local wedge = Instance.new("WedgePart")
+		wedge.Size = V(4, 2, 6)
+		local cw = Instance.new("CornerWedgePart")
+		cw.Size = V(2, 2, 2)
+		host:Destroy()
+	end)
+	ok("decorations accepted" .. (decorOk and "" or (": " .. tostring(decorErr))), decorOk)
+
 	-- the real toolkit + the harness geometry agree
 	local probe = {
 		Name = "Probe",
@@ -1734,6 +1877,7 @@ local function selfTest(): number
 			ctx:Truss(0, 2, -12, 7, { Name = "Truss" })
 			ctx:Beam(V(12, 10, 0), V(18, 10, 0), 2, 1, { Name = "Beam" })
 			ctx:Ball(0, 20, -15, 4, { Name = "Ball" })
+			ctx:Wedge(-15, 5, 5, 4, 10, 20, { Name = "Ramp" })
 			local g = ctx:Group("Spinner", 15, 25, 0)
 			ctx:Block(20, 25, 0, 2, 1, 2, { Name = "Arm", Parent = g })
 			ctx:Spin(g, 30)
@@ -1766,6 +1910,10 @@ local function selfTest(): number
 	local _, ball, ballPose = faceOf("Ball")
 	local br, blo, bhi = G3.extent(G3.solid("ball", ballPose, ball.Size, 8, 1))
 	ok("Ball extent", near(br, 17) and near(blo, 18) and near(bhi, 22))
+	-- a wedge ramp: walkable from its low front edge (y=0) up to its high back edge (y=10)
+	local fRamp = faceOf("Ramp")
+	local rz0, rz1 = select(3, G2.box(fRamp.poly))
+	ok("Wedge ramp face", near(fRamp.lo, 0) and near(fRamp.hi, 10) and near(rz0, -5) and near(rz1, 15))
 	local fBlock = faceOf("Block")
 	local kx0, kx1 = G2.box(fBlock.poly)
 	ok("Yawed block footprint is a diamond", near(kx1 - kx0, 2 * sqrt(2), 1e-6) and near(fBlock.hi, 16))
@@ -1985,7 +2133,7 @@ local function main()
 	print(fmt("Summary: %d sections, %d passed, %d failed, %d warnings", passed + failed, passed, failed, warnCount))
 	if failed > 0 then
 		-- (this text can show up ABOVE the report when output is piped; the FAIL lines are the real info)
-		error(fmt("section harness failed: %d section(s) FAIL - see the FAIL lines in the harness output", failed), 0)
+		error(fmt("\nsection harness failed: %d section(s) FAIL - see the FAIL lines in the harness output", failed), 0)
 	end
 end
 

@@ -1515,6 +1515,7 @@ local function buildMocks()
 		["BasePart.AudioCanCollide"] = true,
 		["BasePart.CollisionGroup"] = "Default",
 		["Model.WorldPivot"] = IDENTITY,
+		["Workspace.Gravity"] = 196.2,
 		["Light.Brightness"] = 1,
 		["Light.Color"] = c3(1, 1, 1),
 		["PointLight.Range"] = 8,
@@ -2394,7 +2395,11 @@ local function buildMocks()
 		if propStr ~= "" then
 			for _, pair in ipairs(string.split(propStr, " ")) do
 				local pn, pt = string.match(pair, "^([%w_]+):(.+)$")
-				rec.Props[pn] = parseType(pt)
+				local spec = parseType(pt)
+				if pn == "CustomPhysicalProperties" then
+					spec.opt = true -- nil is allowed in Roblox (= use the material's physics)
+				end
+				rec.Props[pn] = spec
 			end
 		end
 		if methodStr ~= "" then
