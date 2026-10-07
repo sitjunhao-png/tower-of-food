@@ -1,52 +1,74 @@
-# Tower of Food 🍔🍕
+# Tower of Food 🍔🍕🍩
 
-A Tower of Hell-style Roblox obby made of food. Every 6–8 minutes, a new random 8-stage tower gets built.
+A food-themed **Tower of Hell**. The whole game is one giant tower. You start in the lobby at the bottom, then climb a random stack of food obbies before the timer runs out. There are no checkpoints, and a fresh tower comes out of the oven every 6–8 minutes.
 
-## What's in the game
+## What's in it
 
-- **9 food sections**, 8 picked at random each round: Nugget Steps, Ketchup Slide (slippery), Spinning Pizza, Hot Sauce Lava (tiles turn deadly), Jelly Bounce (trampolines), Noodle Tightrope, Burger Stack, Ice Cream Melt (melts when you touch it), Popcorn Pop (kernels vanish)
-- No checkpoints. If you fall, you drop back down. When the timer hits 0, everyone goes back to the lobby and a new tower is built.
-- **Coins:** 12.5 per stage + 100 for reaching the top = 200 for a full climb
-- **XP & levels:** 10 XP per stage, 100 XP per win. Your level shows on the leaderboard and above your head.
-- **Shop:** Speed Coil (250), Gravity Coil (400), Fusion Coil (1000), saved forever with DataStore
+- **16 food sections**, 8 per tower, getting harder as you climb: Nugget Steps, Ketchup Slide, Spinning Pizza, Hot Sauce Lava, Jelly Bounce, Noodle Swing, Burger Stack, Ice Cream Melt, Popcorn Pop, Spaghetti Sweeper, Donut Drift, Sushi Conveyor, Waffle Wall, Cheese Maze, Chocolate River, Cake Tiers
+- **Tower of Hell-style screen**:
+  - big timer at the top
+  - progress bar on the right with everyone's avatar
+  - Menu and coins at the bottom left
+  - level, XP bar and skill points at the bottom centre
+  - music player at the bottom right
+- **Coins:** 12.5 per section + 100 for reaching the top
+- **Levels and skill points:** spend points on Quick Feet, Springy Legs, Coin Chef and Fast Learner
+- **Shop:**
+  - Speed, Gravity and Fusion coils
+  - Ketchup, Mustard, Rainbow, Sprinkle and Golden Fry trails
+- **Round bonuses** (40% of rounds): x2 coins, low gravity, speedy or bouncy
+- **Gamepasses, ready to switch on:** x2 Coins, Double Jump, Skip Section, VIP and Nugget Trail
+- **Codes:** `FOOD` and `NUGGET`
+- **Top Wins board** in the lobby, and everything saves
 
-## Install it in Roblox Studio (about 5 minutes)
+## Install (the easy way, about 1 minute)
 
-You only paste **2 scripts**. They build everything else themselves.
+1. Open your **Tower of Food** place in Roblox Studio. An empty Baseplate is fine; the script removes the baseplate itself.
+2. Turn on the Command Bar: **View** tab > **Command Bar**. A long box appears at the bottom of the screen.
+3. Copy the whole line from [`install/command-bar.lua`](install/command-bar.lua). Open it, then click the **Copy raw file** button (two squares, top right).
+4. Click in the Command Bar, paste, and press **Enter**.
+5. The Output window should say `Tower of Food installed!`.
+6. Press **Play**.
 
-### Script 1: the game (server)
+To **update** later, do steps 3–4 again. It replaces the old scripts with the newest version.
 
-1. Open your **Tower of Food** place in Roblox Studio.
-2. In the **Explorer** panel, hover over **ServerScriptService**, click the **+** and choose **Script**.
-3. Rename it to `TowerGame` (right-click > Rename).
-4. Open [`src/ServerScriptService/TowerGame.server.lua`](src/ServerScriptService/TowerGame.server.lua) on GitHub and click the **Copy raw file** button (two overlapping squares, top-right of the code).
-5. Double-click the script in Studio, delete the `print("Hello world!")` line, and paste (Ctrl+V).
+> The installer turns on *Allow HTTP Requests* so Studio can download the scripts from GitHub.
+> If you see `HTTP requests are not enabled`, go to **Home > Game Settings > Security**, turn on **Allow HTTP Requests**, and try again.
 
-### Script 2: the screen UI (client)
+## Install (the manual way)
 
-1. In **Explorer**, expand **StarterPlayer**, hover over **StarterPlayerScripts**, click **+** and choose **LocalScript**.
-2. Rename it to `TowerClient`.
-3. Copy [`src/StarterPlayer/StarterPlayerScripts/TowerClient.client.lua`](src/StarterPlayer/StarterPlayerScripts/TowerClient.client.lua) the same way and paste it in.
+If the Command Bar way doesn't work, paste these 4 scripts by hand. For each one:
+1. Hover over the place in the **Explorer** and click **+**.
+2. Choose the type shown and rename it exactly.
+3. Open the GitHub file, click **Copy raw file**, and paste it into the script.
 
-### Turn on saving
+| Put it in | Type | Name | File |
+|---|---|---|---|
+| ServerScriptService | ModuleScript | `TowerSections` | [TowerSections.lua](src/ServerScriptService/TowerSections.lua) |
+| ServerScriptService | Script | `TowerGame` | [TowerGame.server.lua](src/ServerScriptService/TowerGame.server.lua) |
+| StarterPlayer > StarterPlayerScripts | LocalScript | `TowerHUD` | [TowerHUD.client.lua](src/StarterPlayer/StarterPlayerScripts/TowerHUD.client.lua) |
+| StarterPlayer > StarterPlayerScripts | LocalScript | `TowerObstacles` | [TowerObstacles.client.lua](src/StarterPlayer/StarterPlayerScripts/TowerObstacles.client.lua) |
 
-1. **File > Publish to Roblox** (if you haven't already).
-2. **Home > Game Settings > Security** and turn on **Enable Studio Access to API Services**. Click **Save**.
+If you still have the old `TowerClient` LocalScript from version 1, delete it.
 
-### Test it
+## Turn on saving
 
-Press **Play**. You'll spawn in the lobby facing the glass tower. Walk through the door and start climbing!
+1. **File > Publish to Roblox**.
+2. **Home > Game Settings > Security** > turn on **Enable Studio Access to API Services** > **Save**.
 
-> Note: the script deletes the default `SpawnLocation` and makes its own lobby spawn. That's expected.
+## Put it live
 
-### Put it live
+**File > Publish to Roblox**. Then, on the game's Roblox page, click **⋯ > Shut Down All Servers** so everyone gets the new version.
 
-Use **File > Publish to Roblox** after every change. Then go to the game's page on Roblox and use **⋯ > Shut Down All Servers** so players get the new version.
+## Changing things (top of the `TowerGame` script)
 
-## Changing things
+- `CONFIG`: number of sections, round time, coins, XP, round-bonus chance
+- `CONFIG.PASSES`: paste your gamepass IDs here once you make them. Go to **Creator Hub > your game > Monetization > Passes**. Passes with ID `0` show "Coming soon".
+- `CONFIG.MUSIC`: add songs from the Toolbox (**Audio** tab, right-click a song > **Copy Asset ID**)
+- `CONFIG.CODES`: add your own codes
+- `SHOP_ITEMS`: prices for coils and trails
 
-All the easy settings are at the top of `TowerGame`, in `CONFIG` and `SHOP_ITEMS`: number of stages, round time, coin amounts, shop prices, and the gamepass ID for x2 coins.
+## For developers
 
-## Planned next
-
-Gamepasses: x2 coins (already wired in, just needs an ID), double jump, skip section, VIP, nugget trail.
+- `docs/ARCHITECTURE.md`: how the 4 scripts fit together
+- `tools/check.sh`: strict type check against the Roblox API, plus the section test harness

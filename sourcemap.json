@@ -1,0 +1,12 @@
+{"name":"TowerOfFood","className":"DataModel","children":[
+ {"name":"ServerScriptService","className":"ServerScriptService","children":[
+  {"name":"TowerGame","className":"Script","filePaths":["src/ServerScriptService/TowerGame.server.lua"]},
+  {"name":"TowerSections","className":"ModuleScript","filePaths":["src/ServerScriptService/TowerSections.lua"]}
+ ]},
+ {"name":"StarterPlayer","className":"StarterPlayer","children":[
+  {"name":"StarterPlayerScripts","className":"StarterPlayerScripts","children":[
+   {"name":"TowerHUD","className":"LocalScript","filePaths":["src/StarterPlayer/StarterPlayerScripts/TowerHUD.client.lua"]},
+   {"name":"TowerObstacles","className":"LocalScript","filePaths":["src/StarterPlayer/StarterPlayerScripts/TowerObstacles.client.lua"]}
+  ]}
+ ]}
+]}
