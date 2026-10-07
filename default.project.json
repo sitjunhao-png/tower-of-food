@@ -1,0 +1,16 @@
+{
+  "name": "TowerOfFood",
+  "tree": {
+    "$className": "DataModel",
+    "ServerScriptService": {
+      "TowerGame": { "$path": "src/ServerScriptService/TowerGame.server.lua" },
+      "TowerSections": { "$path": "src/ServerScriptService/TowerSections.lua" }
+    },
+    "StarterPlayer": {
+      "StarterPlayerScripts": {
+        "TowerHUD": { "$path": "src/StarterPlayer/StarterPlayerScripts/TowerHUD.client.lua" },
+        "TowerObstacles": { "$path": "src/StarterPlayer/StarterPlayerScripts/TowerObstacles.client.lua" }
+      }
+    }
+  }
+}
